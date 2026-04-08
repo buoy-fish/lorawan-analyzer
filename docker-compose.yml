@@ -1,4 +1,15 @@
 services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./data/mosquitto:/mosquitto/data
+    networks:
+      - internal
+    restart: unless-stopped
+
   postgres:
     image: timescale/timescaledb:latest-pg16
     environment:
@@ -31,6 +42,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     restart: unless-stopped
 
 networks:
