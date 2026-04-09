@@ -120,6 +120,9 @@ export async function runMigrations(): Promise<void> {
   `;
   await sql`SELECT add_retention_policy('packets_channel_sf_hourly', INTERVAL '8 days', if_not_exists => TRUE)`;
 
+  // Add border_gateway_id column for relay/mesh tracking
+  await sql`ALTER TABLE packets ADD COLUMN IF NOT EXISTS border_gateway_id TEXT`;
+
   await sql`CREATE INDEX IF NOT EXISTS packets_gateway_ts_idx ON packets (gateway_id, timestamp DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS packets_dev_addr_ts_idx ON packets (dev_addr, timestamp DESC) WHERE dev_addr IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS packets_packet_type_ts_idx ON packets (packet_type, timestamp DESC)`;

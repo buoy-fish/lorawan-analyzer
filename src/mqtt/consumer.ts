@@ -132,10 +132,10 @@ function handleMessage(topic: string, message: Buffer, format: 'protobuf' | 'jso
         // Uplink frame from device
         if (format === 'json') {
           const frame = JSON.parse(message.toString());
-          packet = parseUplinkFrame(frame, timestamp);
+          packet = parseUplinkFrame(frame, timestamp, gatewayIdFromTopic);
           gatewayLocation = extractGatewayLocationFromJSON(frame);
         } else {
-          packet = parseProtobufUplink(message, timestamp);
+          packet = parseProtobufUplink(message, timestamp, gatewayIdFromTopic);
           gatewayLocation = extractGatewayLocationFromProtobuf(message);
         }
         break;

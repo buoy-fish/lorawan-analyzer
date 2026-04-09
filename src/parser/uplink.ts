@@ -28,7 +28,8 @@ interface ChirpStackUplinkFrame {
 
 export function parseUplinkFrame(
   frame: ChirpStackUplinkFrame,
-  timestamp: Date = new Date()
+  timestamp: Date = new Date(),
+  topicGatewayId?: string
 ): ParsedPacket | null {
   if (!frame.phyPayload) return null;
 
@@ -37,8 +38,22 @@ export function parseUplinkFrame(
   if (!parsed) return null;
 
   const relayId = frame.rxInfo?.metadata?.relay_id;
-  const gatewayId = relayId ?? (frame.rxInfo?.gatewayId ?? 'unknown');
-  const borderGatewayId = relayId ? (frame.rxInfo?.gatewayId ?? null) : null;
+  const rxInfoGatewayId = frame.rxInfo?.gatewayId ?? 'unknown';
+  let gatewayId: string;
+  let borderGatewayId: string | null;
+
+  if (relayId) {
+    // Explicit relay_id in metadata: relay is the originator, rxInfo gateway is border
+    gatewayId = relayId;
+    borderGatewayId = rxInfoGatewayId;
+  } else if (topicGatewayId && rxInfoGatewayId !== 'unknown' && topicGatewayId !== rxInfoGatewayId) {
+    // Topic gateway differs from rxInfo gateway: rxInfo is the relay, topic is the border
+    gatewayId = rxInfoGatewayId;
+    borderGatewayId = topicGatewayId;
+  } else {
+    gatewayId = rxInfoGatewayId;
+    borderGatewayId = null;
+  }
   const frequency = frame.txInfo?.frequency ?? 0;
   const lora = frame.txInfo?.modulation?.lora;
   const bandwidth = lora?.bandwidth ?? 125000;
@@ -109,11 +124,11 @@ export function parseUplinkFrame(
 }
 
 // Parse protobuf UplinkFrame using ChirpStack API types
-export function parseProtobufUplink(data: Buffer, timestamp: Date = new Date()): ParsedPacket | null {
+export function parseProtobufUplink(data: Buffer, timestamp: Date = new Date(), topicGatewayId?: string): ParsedPacket | null {
   try {
     // Import dynamically to avoid issues
     const frame = decodeUplinkFrameProtobuf(data);
-    return parseUplinkFrame(frame, timestamp);
+    return parseUplinkFrame(frame, timestamp, topicGatewayId);
   } catch (err) {
     console.error('Protobuf decode error:', err);
     return null;

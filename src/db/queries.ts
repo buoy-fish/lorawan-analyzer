@@ -92,6 +92,7 @@ type PacketRow = {
   f_port: number | null;
   confirmed: boolean | null;
   session_id: string | null;
+  border_gateway_id: string | null;
 };
 
 let packetBuffer: PacketRow[] = [];
@@ -150,6 +151,7 @@ export async function insertPacket(packet: ParsedPacket): Promise<void> {
     f_port: packet.f_port,
     confirmed: packet.confirmed,
     session_id: packet.session_id ?? null,
+    border_gateway_id: packet.border_gateway_id ?? null,
   });
 
   if (packetBuffer.length >= BATCH_SIZE) {
@@ -1612,6 +1614,7 @@ export async function getRecentPackets(
   confirmed: boolean | null;
   airtime_us: number;
   gateway_name?: string | null;
+  border_gateway_id?: string | null;
 }>> {
   const sql = getDb();
 
@@ -1713,7 +1716,8 @@ export async function getRecentPackets(
       p.f_cnt,
       p.f_port,
       p.confirmed,
-      p.airtime_us
+      p.airtime_us,
+      p.border_gateway_id
     FROM packets p
     ${whereClause}
     ORDER BY p.timestamp DESC
@@ -1741,6 +1745,7 @@ export async function getRecentPackets(
       confirmed: p.confirmed as boolean | null,
       airtime_us: Number(p.airtime_us),
       gateway_name: gw?.name ?? null,
+      border_gateway_id: (p.border_gateway_id as string | null) ?? null,
     };
   });
 }
