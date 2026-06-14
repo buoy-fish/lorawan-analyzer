@@ -97,6 +97,11 @@ export interface GatewayStats {
   group_name: string | null;
   first_seen: Date;
   last_seen: Date;
+  // Last gateway stats heartbeat (ChirpStack `/event/stats`), emitted ~every
+  // 30s regardless of RF traffic. The RF-independent "this gateway is online"
+  // signal — distinct from `last_seen`, which only advances on device uplinks.
+  // Null for gateways we've only ever heard via RF (or before the first stat).
+  last_stats_at: Date | null;
   packet_count: number;
   unique_devices: number;
   total_airtime_ms: number;
