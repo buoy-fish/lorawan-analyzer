@@ -1,0 +1,66 @@
+name: CI/CD
+
+# Pushes to main (prod) run the tests; if they pass, deploy to production.
+# Pull requests run tests only (no deploy).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Manual trigger — lets you run the full pipeline (incl. deploy, when run from
+  # main) on demand, e.g. to verify the runner→box SSH path.
+  workflow_dispatch:
+
+# Never let two deploys to the same branch overlap. We don't cancel an
+# in-flight deploy (that could leave a half-rebuilt container); we queue.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # `--if-present` so this is green before the test harness lands (it
+      # arrives with tier2-gateway-stats-heartbeat). Once a `test` script
+      # exists on main, tests run and genuinely gate the deploy.
+      - name: Run tests
+        run: npm test --if-present
+      - name: Build
+        run: npm run build
+
+  deploy:
+    name: Deploy to production
+    needs: test
+    # Only deploy on a real push to main — not on PRs, and not on other branches.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Bind to a GitHub Environment so you can add required reviewers / protection
+    # rules later without touching this file.
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # Stop on the first failing command so a bad deploy fails the job.
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/lorawan-analyzer
+            echo "==> Fetching origin/main"
+            git fetch --prune origin main
+            git reset --hard origin/main
+            echo "==> Running deploy script ($(git rev-parse --short HEAD))"
+            sudo bash deploy/deploy.sh
