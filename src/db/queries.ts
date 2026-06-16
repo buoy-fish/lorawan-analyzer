@@ -1,6 +1,7 @@
 import { getDb } from './index.js';
 import { updateGatewayCache } from '../websocket/live.js';
 import { calculateAirtime } from '../parser/airtime.js';
+import { isGatewayActive } from '../gateway-activity.js';
 import type {
   ParsedPacket,
   GatewayStats,
@@ -211,6 +212,22 @@ export async function upsertGateway(
   updateGatewayCache(gatewayId, gwName, gwAlias, gwGroup);
 }
 
+// Record a gateway stats heartbeat (`/event/stats`), emitted ~every 30s
+// regardless of RF. Updates ONLY `last_stats_at` — never `last_seen` (which
+// stays RF-only) — so the two signals remain independent. If we see a
+// gateway's stats before any of its RF traffic (online but RF-silent), insert
+// a bootstrap row so it still surfaces; `last_seen` is seeded to the stats
+// time and is overwritten by the first real uplink.
+export async function upsertGatewayStats(gatewayId: string, timestamp: Date = new Date()): Promise<void> {
+  const sql = getDb();
+  await sql`
+    INSERT INTO gateways (gateway_id, first_seen, last_seen, last_stats_at)
+    VALUES (${gatewayId}, ${timestamp}, ${timestamp}, ${timestamp})
+    ON CONFLICT (gateway_id) DO UPDATE SET
+      last_stats_at = EXCLUDED.last_stats_at
+  `;
+}
+
 export async function getGateways(hours: number = 24): Promise<GatewayStats[]> {
   const sql = getDb();
 
@@ -221,10 +238,11 @@ export async function getGateways(hours: number = 24): Promise<GatewayStats[]> {
     group_name: string | null;
     first_seen: Date;
     last_seen: Date;
+    last_stats_at: Date | null;
     latitude: number | null;
     longitude: number | null;
   }>>`
-    SELECT gateway_id, name, alias, group_name, first_seen, last_seen, latitude, longitude
+    SELECT gateway_id, name, alias, group_name, first_seen, last_seen, last_stats_at, latitude, longitude
     FROM gateways
   `;
 
@@ -275,6 +293,7 @@ export async function getGateways(hours: number = 24): Promise<GatewayStats[]> {
         group_name: gw.group_name,
         first_seen: gw.first_seen,
         last_seen: gw.last_seen,
+        last_stats_at: gw.last_stats_at,
         packet_count: Number(agg?.packet_count ?? 0),
         unique_devices: Number(dev?.unique_devices ?? 0),
         total_airtime_ms: Number(agg?.total_airtime_ms ?? 0),
@@ -282,7 +301,9 @@ export async function getGateways(hours: number = 24): Promise<GatewayStats[]> {
         longitude: gw.longitude,
       };
     })
-    .filter(gw => gw.packet_count >= 10)
+    // Keep gateways with real RF traffic OR a fresh stats heartbeat — the
+    // latter is what surfaces an online-but-RF-silent gateway (Tier 2).
+    .filter(gw => isGatewayActive(gw, hours, Date.now()))
     .sort((a, b) => b.packet_count - a.packet_count);
 }
 
@@ -296,10 +317,11 @@ export async function getGatewayById(gatewayId: string): Promise<GatewayStats | 
     group_name: string | null;
     first_seen: Date;
     last_seen: Date;
+    last_stats_at: Date | null;
     latitude: number | null;
     longitude: number | null;
   }>>`
-    SELECT gateway_id, name, alias, group_name, first_seen, last_seen, latitude, longitude
+    SELECT gateway_id, name, alias, group_name, first_seen, last_seen, last_stats_at, latitude, longitude
     FROM gateways WHERE gateway_id = ${gatewayId}
   `;
 
@@ -328,6 +350,7 @@ export async function getGatewayById(gatewayId: string): Promise<GatewayStats | 
     group_name: gw.group_name,
     first_seen: gw.first_seen,
     last_seen: gw.last_seen,
+    last_stats_at: gw.last_stats_at,
     packet_count: Number(stats.packet_count),
     unique_devices: Number(stats.unique_devices),
     total_airtime_ms: Number(stats.total_airtime_ms),

@@ -7,6 +7,7 @@ import { parseTxAck, parseProtobufTxAck } from '../parser/txack.js';
 
 type PacketHandler = (packet: ParsedPacket, gatewayLocation?: GatewayLocation | null) => void;
 type LocationHandler = (gatewayId: string, location: GatewayLocation) => void;
+type StatsHandler = (gatewayId: string, timestamp: Date) => void;
 type ChirpStackUplinkHandler = (event: ChirpStackUplinkEvent) => void;
 type ChirpStackTxAckHandler = (event: ChirpStackTxAckEvent) => void;
 type ChirpStackAckHandler = (event: ChirpStackAckEvent) => void;
@@ -15,6 +16,7 @@ type ChirpStackDownlinkHandler = (event: ChirpStackDownlinkEvent) => void;
 let clients: MqttClient[] = [];
 let packetHandlers: PacketHandler[] = [];
 let locationHandlers: LocationHandler[] = [];
+let statsHandlers: StatsHandler[] = [];
 let csUplinkHandlers: ChirpStackUplinkHandler[] = [];
 let csTxAckHandlers: ChirpStackTxAckHandler[] = [];
 let csAckHandlers: ChirpStackAckHandler[] = [];
@@ -42,6 +44,10 @@ export function onPacket(handler: PacketHandler): void {
 
 export function onGatewayLocation(handler: LocationHandler): void {
   locationHandlers.push(handler);
+}
+
+export function onGatewayStats(handler: StatsHandler): void {
+  statsHandlers.push(handler);
 }
 
 export function removePacketHandler(handler: PacketHandler): void {
@@ -161,8 +167,17 @@ function handleMessage(topic: string, message: Buffer, format: 'protobuf' | 'jso
         break;
 
       case 'stats':
-        // Gateway stats - could be used for monitoring but not packet tracking
-        // Skip for now
+        // Gateway stats = periodic heartbeat, emitted ~every 30s regardless of
+        // RF traffic. The RF-independent "this gateway is online" signal. We
+        // only need the fact that it arrived (gateway id from the topic +
+        // time); no need to decode the protobuf body.
+        for (const handler of statsHandlers) {
+          try {
+            handler(gatewayIdFromTopic, timestamp);
+          } catch (err) {
+            console.error('Stats handler error:', err);
+          }
+        }
         break;
 
       default:

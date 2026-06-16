@@ -123,6 +123,10 @@ export async function runMigrations(): Promise<void> {
   // Add border_gateway_id column for relay/mesh tracking
   await sql`ALTER TABLE packets ADD COLUMN IF NOT EXISTS border_gateway_id TEXT`;
 
+  // RF-independent heartbeat: last gateway stats (`/event/stats`) seen, set by
+  // upsertGatewayStats. Lets consumers tell "online but RF-silent" from "down".
+  await sql`ALTER TABLE gateways ADD COLUMN IF NOT EXISTS last_stats_at TIMESTAMPTZ`;
+
   await sql`CREATE INDEX IF NOT EXISTS packets_gateway_ts_idx ON packets (gateway_id, timestamp DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS packets_dev_addr_ts_idx ON packets (dev_addr, timestamp DESC) WHERE dev_addr IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS packets_packet_type_ts_idx ON packets (packet_type, timestamp DESC)`;

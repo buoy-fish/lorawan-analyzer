@@ -3,8 +3,8 @@ import fs from 'fs';
 import { loadConfig } from './config.js';
 import { initPostgres, closePostgres } from './db/index.js';
 import { runMigrations } from './db/migrations.js';
-import { insertPacket, flushPackets, upsertGateway, getCustomOperators, insertCsPacket, upsertCsDevice, flushCsPackets, getCsDevicesForCache } from './db/queries.js';
-import { connectMqtt, onPacket, onGatewayLocation, disconnectMqtt, onChirpStackUplink, onChirpStackTxAck, onChirpStackAck, onChirpStackDownlink } from './mqtt/consumer.js';
+import { insertPacket, flushPackets, upsertGateway, upsertGatewayStats, getCustomOperators, insertCsPacket, upsertCsDevice, flushCsPackets, getCsDevicesForCache } from './db/queries.js';
+import { connectMqtt, onPacket, onGatewayLocation, onGatewayStats, disconnectMqtt, onChirpStackUplink, onChirpStackTxAck, onChirpStackAck, onChirpStackDownlink } from './mqtt/consumer.js';
 import { initOperatorPrefixes } from './operators/prefixes.js';
 import { startApi } from './api/index.js';
 import { broadcastCsUplink, broadcastCsTxAck, broadcastCsAck, broadcastCsDownlink, updateCsDeviceCache } from './websocket/live.js';
@@ -145,6 +145,13 @@ async function main(): Promise<void> {
   onGatewayLocation((gatewayId, location) => {
     upsertGateway(gatewayId, location.name ?? null, location).catch(err => {
       console.error('Error updating gateway location:', err);
+    });
+  });
+
+  // Record gateway stats heartbeats (RF-independent "online" signal).
+  onGatewayStats((gatewayId, timestamp) => {
+    upsertGatewayStats(gatewayId, timestamp).catch(err => {
+      console.error('Error updating gateway stats heartbeat:', err);
     });
   });
 
